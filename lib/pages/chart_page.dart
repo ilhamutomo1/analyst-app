@@ -164,8 +164,7 @@ class _ChartPageState extends State<ChartPage> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: buildPlayerPerformanceChart(
-                    // konversi playerDetails ke bentuk yang dibutuhkan
+                  child: buildPerformanceChart(
                     playerDetails.map((p) => {
                       'playerName': p['playerName'] as String,
                       'points': int.parse(p['points'] as String),
@@ -214,60 +213,94 @@ class _ChartPageState extends State<ChartPage> {
 
   Widget _buildSectionHeader(String title, IconData icon) => Row(children: [Icon(icon, color: Colors.white70), SizedBox(width: 8), Text(title, style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))]);
 
-  Widget buildPlayerPerformanceChart(List<Map<String, dynamic>> playerScores) {
+  Widget buildPerformanceChart(List<Map<String, dynamic>> data) {
+    final performances = data.map((e) {
+      final v = e['performance'];
+      return (v is num ? v.toDouble() : 0.0).clamp(0.0, 100.0);
+    }).toList();
+
+    const double fixedMaxY = 100.0;
+
     return SizedBox(
-      height: 250,
+      height: 180,
       child: BarChart(
         BarChartData(
-          alignment: BarChartAlignment.spaceAround,
-          maxY: (playerScores.map((p) => p['points'] as int).reduce((a, b) => a > b ? a : b) + 2).toDouble(),
-          barTouchData: BarTouchData(enabled: true),
+          alignment: BarChartAlignment.spaceBetween,
+          maxY: fixedMaxY,
+          groupsSpace: 12,         // spasi antar grup bar
+          barTouchData: BarTouchData(
+            enabled: true,
+            touchTooltipData: BarTouchTooltipData(
+              tooltipBgColor: Colors.black87,
+              getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                return BarTooltipItem(
+                  '${data[groupIndex]['playerName']}\n${rod.toY.toStringAsFixed(1)}%',
+                  TextStyle(color: Colors.white, fontSize: 12),
+                );
+              },
+            ),
+          ),
           titlesData: FlTitlesData(
             leftTitles: AxisTitles(
-              sideTitles: SideTitles(showTitles: true),
+              sideTitles: SideTitles(
+                showTitles: true,
+                interval: 20,                // hanya setiap 20%
+                getTitlesWidget: (val, _) => Text(
+                  '${val.toInt()}%',
+                  style: TextStyle(color: Colors.white70, fontSize: 10),
+                ),
+              ),
             ),
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
                 getTitlesWidget: (value, meta) {
                   final idx = value.toInt();
-                  if (idx >= 0 && idx < playerScores.length) {
-                    return Text(
-                      playerScores[idx]['playerName'],
-                      style: TextStyle(color: Colors.white, fontSize: 10),
+                  if (idx >= 0 && idx < data.length) {
+                    return RotatedBox(
+                      quarterTurns: 1,       // putar 90° agar lebih muat
+                      child: Text(
+                        data[idx]['playerName'] as String,
+                        style: TextStyle(color: Colors.white, fontSize: 9),
+                      ),
                     );
                   }
-                  return Text('');
+                  return SizedBox.shrink();
                 },
-                reservedSize: 42,
+                reservedSize: 30,
               ),
             ),
             topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
             rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
+          gridData: FlGridData(
+            show: true,
+            horizontalInterval: 20,    // garis grid tiap 20%
+            getDrawingHorizontalLine: (y) => FlLine(color: Colors.white12),
+          ),
           borderData: FlBorderData(show: false),
-          barGroups: playerScores.asMap().entries.map((e) {
-            final idx = e.key;
-            final pts = e.value['points'] as int;
+          barGroups: performances.asMap().entries.map((e) {
             return BarChartGroupData(
-              x: idx,
+              x: e.key,
               barRods: [
                 BarChartRodData(
-                  toY: pts.toDouble(),
-                  width: 16,
-                  borderRadius: BorderRadius.circular(4),
-                  // kamu bisa atur warna berbeda jika mau
+                  toY: e.value,
+                  width: 12,
+                  borderRadius: BorderRadius.circular(2),
                   color: Colors.amber,
-                )
+                  backDrawRodData: BackgroundBarChartRodData(
+                    show: true,
+                    toY: fixedMaxY,
+                    color: Colors.white10,
+                  ),
+                ),
               ],
             );
           }).toList(),
         ),
       ),
     );
-
   }
-
 
 
   // ========== Data Helpers ===========
@@ -424,6 +457,54 @@ class _ChartPageState extends State<ChartPage> {
     }
 
     return totals;
+  }
+
+  List<Map<String, dynamic>> getPlayerPerformances() {
+    final List<Map<String, dynamic>> list = [];
+
+    for (var p in playerDetails) {
+      final id = p['id'] as int;
+      final name = p['playerName'] as String;
+      final recap = playerRecaps[id] ?? [];
+
+      // ubah recap List<Map<String,String>> ke Map<String, Map<String,int>>
+      final byCat = <String, Map<String,int>>{};
+      for (var row in recap) {
+        final cat = row['INDICATOR']!;
+        byCat[cat] = {
+          'ACE': int.tryParse(row['ACE']!) ?? 0,
+          'IN': int.tryParse(row['IN/SUCCESS']!) ?? 0,
+          'SUCCESS': int.tryParse(row['IN/SUCCESS']!) ?? 0,
+          'ERROR': int.tryParse(row['ERROR']!) ?? 0,
+          'FAILED': int.tryParse(row['FAILED'] ?? '0') ?? 0,
+        };
+      }
+
+      int totalAce = 0, totalSuccess = 0, totalError = 0;
+      const mainCats = ["SERVE","STRIKE","FREEBALL","FIRSTBALL","FEEDING","BLOCKING"];
+      for (var cat in mainCats) {
+        final vals = byCat[cat] ?? {};
+        totalAce += vals['ACE'] ?? 0;
+        if (["SERVE","STRIKE","FREEBALL"].contains(cat)) {
+          totalSuccess += vals['IN'] ?? 0;
+        }
+        if (["FIRSTBALL","FEEDING","BLOCKING"].contains(cat)) {
+          totalSuccess += vals['SUCCESS'] ?? 0;
+        }
+        totalError += (vals['ERROR'] ?? 0) + (vals['FAILED'] ?? 0);
+      }
+
+      final num = totalAce + totalSuccess;
+      final den = num + totalError;
+      final perf = den > 0 ? (num / den) * 100 : 0.0;
+
+      list.add({
+        'playerName': name,
+        'performance': perf.toDouble(),
+      });
+    }
+
+    return list;
   }
 
 
