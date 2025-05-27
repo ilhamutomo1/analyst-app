@@ -156,6 +156,25 @@ class _ChartPageState extends State<ChartPage> {
               ),
               SizedBox(height: 24),
 
+              SizedBox(height: 24),
+              _buildSectionHeader('Player Performance', Icons.bar_chart),
+              SizedBox(height: 16),
+              Card(
+                color: Color(0xFF1E293B),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: buildPlayerPerformanceChart(
+                    // konversi playerDetails ke bentuk yang dibutuhkan
+                    playerDetails.map((p) => {
+                      'playerName': p['playerName'] as String,
+                      'points': int.parse(p['points'] as String),
+                    }).toList(),
+                  ),
+                ),
+              ),
+              SizedBox(height: 24),
+
               // Player Details Expandable
               _buildSectionHeader('Player Details', Icons.list),
               SizedBox(height: 8),
@@ -194,6 +213,62 @@ class _ChartPageState extends State<ChartPage> {
   );
 
   Widget _buildSectionHeader(String title, IconData icon) => Row(children: [Icon(icon, color: Colors.white70), SizedBox(width: 8), Text(title, style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))]);
+
+  Widget buildPlayerPerformanceChart(List<Map<String, dynamic>> playerScores) {
+    return SizedBox(
+      height: 250,
+      child: BarChart(
+        BarChartData(
+          alignment: BarChartAlignment.spaceAround,
+          maxY: (playerScores.map((p) => p['points'] as int).reduce((a, b) => a > b ? a : b) + 2).toDouble(),
+          barTouchData: BarTouchData(enabled: true),
+          titlesData: FlTitlesData(
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(showTitles: true),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (value, meta) {
+                  final idx = value.toInt();
+                  if (idx >= 0 && idx < playerScores.length) {
+                    return Text(
+                      playerScores[idx]['playerName'],
+                      style: TextStyle(color: Colors.white, fontSize: 10),
+                    );
+                  }
+                  return Text('');
+                },
+                reservedSize: 42,
+              ),
+            ),
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
+          borderData: FlBorderData(show: false),
+          barGroups: playerScores.asMap().entries.map((e) {
+            final idx = e.key;
+            final pts = e.value['points'] as int;
+            return BarChartGroupData(
+              x: idx,
+              barRods: [
+                BarChartRodData(
+                  toY: pts.toDouble(),
+                  width: 16,
+                  borderRadius: BorderRadius.circular(4),
+                  // kamu bisa atur warna berbeda jika mau
+                  color: Colors.amber,
+                )
+              ],
+            );
+          }).toList(),
+        ),
+      ),
+    );
+
+  }
+
+
 
   // ========== Data Helpers ===========
   Future<List<Map<String, dynamic>>> fetchPlayerDetailsForMatch() async {
